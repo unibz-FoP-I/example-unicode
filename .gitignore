@@ -1,3 +1,6 @@
+# CMake out of source build
+build/
+
 # Prerequisites
 *.d
 
