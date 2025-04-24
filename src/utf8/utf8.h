@@ -43,6 +43,14 @@
 #pragma warning(disable : 4820)
 #endif
 
+#if defined(__cplusplus)
+#if defined(_MSC_VER)
+#define utf8_cplusplus _MSVC_LANG
+#else
+#define utf8_cplusplus __cplusplus
+#endif
+#endif
+
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -61,10 +69,20 @@ typedef int32_t utf8_int32_t;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
 #pragma clang diagnostic ignored "-Wcast-qual"
+
+#if __has_warning("-Wunsafe-buffer-usage")
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+#endif
 #endif
 
-#ifdef __cplusplus
+#ifdef utf8_cplusplus
 extern "C" {
+#endif
+
+#if defined(__TINYC__)
+#define UTF8_ATTRIBUTE(a) __attribute((a))
+#else
+#define UTF8_ATTRIBUTE(a) __attribute__((a))
 #endif
 
 #if defined(_MSC_VER)
@@ -73,21 +91,31 @@ extern "C" {
 #define utf8_restrict __restrict
 #define utf8_weak __inline
 #elif defined(__clang__) || defined(__GNUC__)
-#define utf8_nonnull __attribute__((nonnull))
-#define utf8_pure __attribute__((pure))
+#define utf8_nonnull UTF8_ATTRIBUTE(nonnull)
+#define utf8_pure UTF8_ATTRIBUTE(pure)
 #define utf8_restrict __restrict__
-#define utf8_weak __attribute__((weak))
+#define utf8_weak UTF8_ATTRIBUTE(weak)
+#elif defined(__TINYC__)
+#define utf8_nonnull UTF8_ATTRIBUTE(nonnull)
+#define utf8_pure UTF8_ATTRIBUTE(pure)
+#define utf8_restrict
+#define utf8_weak UTF8_ATTRIBUTE(weak)
+#elif defined(__IAR_SYSTEMS_ICC__)
+#define utf8_nonnull
+#define utf8_pure UTF8_ATTRIBUTE(pure)
+#define utf8_restrict __restrict
+#define utf8_weak UTF8_ATTRIBUTE(weak)
 #else
-#error Non clang, non gcc, non MSVC compiler found!
+#error Non clang, non gcc, non MSVC, non tcc, non iar compiler found!
 #endif
 
-#ifdef __cplusplus
+#ifdef utf8_cplusplus
 #define utf8_null NULL
 #else
 #define utf8_null 0
 #endif
 
-#if (defined(__cplusplus) && __cplusplus >= 201402L)
+#if defined(utf8_cplusplus) && utf8_cplusplus >= 201402L && (!defined(_MSC_VER) || (defined(_MSC_VER) && _MSC_VER >= 1910))
 #define utf8_constexpr14 constexpr
 #define utf8_constexpr14_impl constexpr
 #else
@@ -96,7 +124,7 @@ extern "C" {
 #define utf8_constexpr14_impl
 #endif
 
-#if defined(__cplusplus) && __cplusplus >= 202002L
+#if defined(utf8_cplusplus) && utf8_cplusplus >= 202002L && defined(__cpp_char8_t)
 using utf8_int8_t = char8_t; /* Introduced in C++20 */
 #else
 typedef char utf8_int8_t;
@@ -564,7 +592,7 @@ utf8_constexpr14_impl int utf8ncasecmp(const utf8_int8_t *src1,
       const utf8_int32_t c1 = (0xe0 & *s1);
       const utf8_int32_t c2 = (0xe0 & *s2);
 
-      if (c1 < c2) {
+      if (c1 != c2) {
         return c1 - c2;
       } else {
         return 0;
@@ -575,7 +603,7 @@ utf8_constexpr14_impl int utf8ncasecmp(const utf8_int8_t *src1,
       const utf8_int32_t c1 = (0xf0 & *s1);
       const utf8_int32_t c2 = (0xf0 & *s2);
 
-      if (c1 < c2) {
+      if (c1 != c2) {
         return c1 - c2;
       } else {
         return 0;
@@ -586,7 +614,7 @@ utf8_constexpr14_impl int utf8ncasecmp(const utf8_int8_t *src1,
       const utf8_int32_t c1 = (0xf8 & *s1);
       const utf8_int32_t c2 = (0xf8 & *s2);
 
-      if (c1 < c2) {
+      if (c1 != c2) {
         return c1 - c2;
       } else {
         return 0;
@@ -681,7 +709,8 @@ utf8_int8_t *utf8ncpy(utf8_int8_t *utf8_restrict dst,
   }
 
   if (check_index < index &&
-      (index - check_index) < utf8codepointsize(d[check_index])) {
+      ((index - check_index) < utf8codepointcalcsize(&d[check_index]) ||
+       (index - check_index) == n)) {
     index = check_index;
   }
 
@@ -783,7 +812,7 @@ utf8_constexpr14_impl utf8_int8_t *utf8rchr(const utf8_int8_t *src, int chr) {
   while ('\0' != *src) {
     size_t offset = 0;
 
-    while (src[offset] == c[offset]) {
+    while ((src[offset] == c[offset]) && ('\0' != src[offset])) {
       offset++;
     }
 
@@ -791,6 +820,10 @@ utf8_constexpr14_impl utf8_int8_t *utf8rchr(const utf8_int8_t *src, int chr) {
       /* we found a matching utf8 code point */
       match = (utf8_int8_t *)src;
       src += offset;
+
+      if ('\0' == *src) {
+        break;
+      }
     } else {
       src += offset;
 
@@ -1400,9 +1433,6 @@ utf8_constexpr14_impl utf8_int32_t utf8lwrcodepoint(utf8_int32_t cp) {
     case 0x01ac:
       cp = 0x01ad;
       break;
-    case 0x01af:
-      cp = 0x01b0;
-      break;
     case 0x01b8:
       cp = 0x01b9;
       break;
@@ -1566,9 +1596,6 @@ utf8_constexpr14_impl utf8_int32_t utf8uprcodepoint(utf8_int32_t cp) {
     case 0x01ad:
       cp = 0x01ac;
       break;
-    case 0x01b0:
-      cp = 0x01af;
-      break;
     case 0x01b9:
       cp = 0x01b8;
       break;
@@ -1679,7 +1706,7 @@ utf8rcodepoint(const utf8_int8_t *utf8_restrict str,
 #undef utf8_constexpr14
 #undef utf8_null
 
-#ifdef __cplusplus
+#ifdef utf8_cplusplus
 } /* extern "C" */
 #endif
 
